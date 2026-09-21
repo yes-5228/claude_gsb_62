@@ -3,12 +3,19 @@ import Tag from '../../../components/common/Tag.jsx'
 import { DATA_SOURCE_TONE } from '../../../constants/index.js'
 import { formatDateTime, formatNumber, formatRatio } from '../../../utils/format.js'
 
-export default function MeasurementTable({ rows, loading, onDelete }) {
+export default function MeasurementTable({ rows, loading, onDelete, sort, order, onSort }) {
   const columns = [
-    { key: 'measured_at', title: '监测时间', className: 'cell-nowrap', render: (row) => formatDateTime(row.measured_at) },
+    {
+      key: 'measured_at',
+      title: '监测时间',
+      sortKey: 'measured_at',
+      className: 'cell-nowrap',
+      render: (row) => formatDateTime(row.measured_at)
+    },
     {
       key: 'station',
       title: '监测点',
+      sortKey: 'station_code',
       render: (row) => (
         <div>
           <div>{row.station?.name || '-'}</div>
@@ -16,11 +23,12 @@ export default function MeasurementTable({ rows, loading, onDelete }) {
         </div>
       )
     },
-    { key: 'pollutant_label', title: '监测因子', className: 'cell-nowrap' },
+    { key: 'pollutant_label', title: '监测因子', sortKey: 'pollutant', className: 'cell-nowrap' },
     { key: 'period_label', title: '周期', className: 'cell-nowrap' },
     {
       key: 'value',
       title: '监测值',
+      sortKey: 'value',
       align: 'right',
       className: 'cell-nowrap',
       render: (row) => (
@@ -38,6 +46,7 @@ export default function MeasurementTable({ rows, loading, onDelete }) {
     {
       key: 'is_exceeded',
       title: '超标判定',
+      sortKey: 'exceed_ratio',
       render: (row) =>
         row.is_exceeded ? <Tag tone="danger">{formatRatio(row.exceed_ratio)}</Tag> : <Tag tone="success">达标</Tag>
     },
@@ -64,6 +73,9 @@ export default function MeasurementTable({ rows, loading, onDelete }) {
       columns={columns}
       rows={rows}
       loading={loading}
+      sort={sort}
+      order={order}
+      onSort={onSort}
       emptyText="暂无监测数据, 请先在上方录入"
       emptyIcon="✍️"
     />

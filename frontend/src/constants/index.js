@@ -8,6 +8,18 @@ export const NAV_ITEMS = [
 
 export const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
 
+// Dimensions shared by the measurement list and the query page.
+// Order must stay in sync with backend SORT_SPECS; every dimension is
+// tie-broken by the unique row id server-side.
+export const SORT_OPTIONS = [
+  { value: 'measured_at', label: '监测时间' },
+  { value: 'value', label: '监测值' },
+  { value: 'exceed_ratio', label: '超标倍数' },
+  { value: 'pollutant', label: '监测因子' },
+  { value: 'station_code', label: '站点编码' },
+  { value: 'created_at', label: '录入时间' }
+]
+
 export const STATION_STATUS_TONE = { active: 'success', maintenance: 'warning', offline: 'neutral' }
 export const EXCEEDANCE_STATUS_TONE = { pending: 'warning', confirmed: 'danger', ignored: 'neutral' }
 export const EXCEEDANCE_LEVEL_TONE = { light: 'info', moderate: 'warning', severe: 'danger' }

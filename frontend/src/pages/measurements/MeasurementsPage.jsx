@@ -28,7 +28,7 @@ const INITIAL_FILTERS = {
 
 export default function MeasurementsPage() {
   const toast = useToast()
-  const query = useListQuery(listMeasurements, INITIAL_FILTERS)
+  const query = useListQuery(listMeasurements, INITIAL_FILTERS, { mode: 'cursor' })
   const [result, setResult] = useState(null)
   const [pendingDelete, setPendingDelete] = useState(null)
   const [deleting, setDeleting] = useState(false)
@@ -37,6 +37,7 @@ export default function MeasurementsPage() {
   const handleSubmitted = useCallback(
     (payload) => {
       setResult({ kind: 'submit', payload })
+      // Restart at page 1 so the just-recorded row and the new total show.
       query.reload()
     },
     [query]
@@ -60,15 +61,20 @@ export default function MeasurementsPage() {
   const handleExport = useCallback(async () => {
     setExporting(true)
     try {
-      const blob = await downloadFile(exportMeasurementsUrl(query.filters))
+      const { blob, count } = await downloadFile(exportMeasurementsUrl(query.filters))
       saveBlob(blob, `监测数据_${Date.now()}.csv`)
-      toast.success('导出任务已完成, 请查看下载文件')
+      // Reconcile the streamed row count with the total above the list.
+      if (count !== null && count !== query.total) {
+        toast.warning(`导出 ${count} 条, 与列表总数 ${query.total} 条不一致, 数据可能刚被更新, 建议刷新后重试`)
+      } else {
+        toast.success(`导出任务已完成, 共 ${count ?? ''} 条, 与汇总条数一致`)
+      }
     } catch (error) {
       toast.error(error.message)
     } finally {
       setExporting(false)
     }
-  }, [query.filters, toast])
+  }, [query.filters, query.total, toast])
 
   return (
     <>
@@ -91,7 +97,7 @@ export default function MeasurementsPage() {
 
       <SectionCard
         title="最近录入的数据"
-        hint="按监测时间倒序展示, 便于核对刚提交的记录"
+        hint="点击表头可排序; 翻页采用稳定游标, 他人录入/删除不会让已看过的页错位"
         actions={
           <>
             <button type="button" className="btn btn-sm" onClick={query.reload} disabled={query.loading}>
@@ -106,6 +112,9 @@ export default function MeasurementsPage() {
         <MeasurementTable
           rows={query.items}
           loading={query.loading}
+          sort={query.sort}
+          order={query.order}
+          onSort={query.setSort}
           onDelete={(row) => setPendingDelete(row)}
         />
         <Pagination
@@ -113,7 +122,13 @@ export default function MeasurementsPage() {
           pages={query.pages}
           total={query.total}
           pageSize={query.pageSize}
-          onPageChange={query.setPage}
+          loading={query.loading}
+          hasPrev={query.hasPrev}
+          hasNext={query.hasNext}
+          onFirst={query.goFirst}
+          onPrev={query.goPrev}
+          onNext={query.goNext}
+          onLast={query.goLast}
           onPageSizeChange={query.setPageSize}
         />
       </SectionCard>

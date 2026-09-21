@@ -3,7 +3,7 @@ from flask import Blueprint, current_app, request
 
 from ..domain.constants import DATA_SOURCE_LABELS, PERIOD_LABELS
 from ..services import measurement_service, query_service, station_service
-from ..utils.pagination import paginate_query
+from ..utils.pagination import keyset_params
 from ..utils.validation import Validator
 from .helpers import json_payload, list_payload
 
@@ -12,10 +12,24 @@ bp = Blueprint("measurements", __name__)
 
 @bp.get("/", strict_slashes=False)
 def list_measurements():
-    query, filters = query_service.measurement_query(request.args)
-    result = paginate_query(query, lambda row: row.to_dict(include_station=True))
-    result["summary"] = query_service.summary(filters)
-    return result
+    cursor, direction, page_size = keyset_params()
+    page = query_service.measurement_page(
+        request.args, cursor=cursor, direction=direction, page_size=page_size
+    )
+    items = [row.to_dict(include_station=True) for row in page["rows"]]
+    return {
+        "items": items,
+        "total": page["total"],
+        "page_size": page_size,
+        "sort": page["sort"],
+        "order": page["order"],
+        "cursor_pagination": True,
+        "next_cursor": page["next_cursor"],
+        "prev_cursor": page["prev_cursor"],
+        "has_next": page["has_next"],
+        "has_prev": page["has_prev"],
+        "summary": query_service.summary(page["filters"], total=page["total"]),
+    }
 
 
 @bp.get("/summary")
@@ -69,8 +83,12 @@ def create_entries():
 def export_measurements():
     from ..utils.csv_export import csv_response
 
-    query, _ = query_service.measurement_query(request.args)
-    rows = query.limit(current_app.config["MAX_EXPORT_ROWS"]).all()
+    query, _filters, _sort, _descending = query_service.measurement_query(
+        request.args, sorted_query=True, with_station=True
+    )
+    total = query.order_by(None).count()
+    # Full export: no row cap, streamed in the same order as the list.
+    rows = query.yield_per(current_app.config["EXPORT_BATCH_SIZE"])
     columns = [
         ("站点编码", lambda row: row.station.code if row.station else ""),
         ("站点名称", lambda row: row.station.name if row.station else ""),
@@ -87,7 +105,7 @@ def export_measurements():
         ("录入人", "recorder"),
         ("备注", "remark"),
     ]
-    return csv_response(rows, columns, "monitoring_data")
+    return csv_response(rows, columns, "monitoring_data", count=total)
 
 
 @bp.get("/<int:measurement_id>")

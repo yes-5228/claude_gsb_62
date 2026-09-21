@@ -31,7 +31,10 @@ const INITIAL_FILTERS = {
 
 export default function QueryPage() {
   const toast = useToast()
-  const query = useListQuery(queryMeasurements, INITIAL_FILTERS, { pageSize: 20 })
+  const query = useListQuery(queryMeasurements, INITIAL_FILTERS, {
+    pageSize: 20,
+    mode: 'cursor'
+  })
   const [statsParams, setStatsParams] = useState({ group_by: 'pollutant', metric: 'avg' })
   const [exporting, setExporting] = useState(false)
 
@@ -51,9 +54,15 @@ export default function QueryPage() {
   const handleExport = async () => {
     setExporting(true)
     try {
-      const blob = await downloadFile(exportQueryUrl({ ...query.filters, sort: 'measured_at', order: 'desc' }))
+      const { blob, count } = await downloadFile(
+        exportQueryUrl({ ...query.filters, sort: query.sort, order: query.order })
+      )
       saveBlob(blob, `监测数据查询结果_${Date.now()}.csv`)
-      toast.success('导出任务已完成, 请查看下载文件')
+      if (count !== null && count !== query.total) {
+        toast.warning(`导出 ${count} 条, 与列表总数 ${query.total} 条不一致, 数据可能刚被更新, 建议刷新后重试`)
+      } else {
+        toast.success(`导出任务已完成, 共 ${count ?? ''} 条, 与汇总条数一致`)
+      }
     } catch (error) {
       toast.error(error.message)
     } finally {
@@ -72,20 +81,20 @@ export default function QueryPage() {
 
       {query.error ? <Alert tone="error">{query.error.message}</Alert> : null}
 
-      <div className="stat-grid">
-        <StatCard label="符合条件的数据量" value={summary ? summary.total : '-'} foot={summary ? `涉及 ${summary.station_count} 个监测点` : ''} />
+      <div className={`stat-grid${query.loading && summary ? ' stat-grid-loading' : ''}`}>
+        <StatCard label="符合条件的数据量" value={summary ? summary.total : '-'} foot={summary ? `涉及 ${summary.station_count} 个监测点` : ' '} />
         <StatCard
           label="超标记录"
           value={summary ? summary.exceeded_count : '-'}
           tone={summary?.exceeded_count ? 'danger' : undefined}
-          foot={summary ? `超标率 ${formatPercent(summary.exceed_rate)}` : ''}
+          foot={summary ? `超标率 ${formatPercent(summary.exceed_rate)}` : ' '}
         />
-        <StatCard label="平均浓度" value={summary ? formatNumber(summary.avg_value) : '-'} foot="按当前筛选范围计算" />
+        <StatCard label="平均浓度" value={summary ? formatNumber(summary.avg_value) : '-'} foot={summary ? "按当前筛选范围计算" : " "} />
         <StatCard
           label="时间范围"
           value={summary ? formatDateTime(summary.first_measured_at).slice(5, 10) : '-'}
           unit={summary ? `~ ${formatDateTime(summary.last_measured_at).slice(5, 10)}` : ''}
-          foot={summary ? `${formatDateTime(summary.first_measured_at)} ~ ${formatDateTime(summary.last_measured_at)}` : ''}
+          foot={summary ? `${formatDateTime(summary.first_measured_at)} ~ ${formatDateTime(summary.last_measured_at)}` : ' '}
         />
       </div>
 
@@ -100,7 +109,7 @@ export default function QueryPage() {
 
       <SectionCard
         title="查询结果"
-        hint="按监测时间倒序, 单次导出最多 20000 行"
+        hint="点击表头可切换排序维度并回到第一页; 导出与当前筛选、排序完全一致"
         actions={
           <>
             <button type="button" className="btn btn-sm" onClick={query.reload} disabled={query.loading}>
@@ -112,13 +121,25 @@ export default function QueryPage() {
           </>
         }
       >
-        <QueryResultTable rows={query.items} loading={query.loading} />
+        <QueryResultTable
+          rows={query.items}
+          loading={query.loading}
+          sort={query.sort}
+          order={query.order}
+          onSort={query.setSort}
+        />
         <Pagination
           page={query.page}
           pages={query.pages}
           total={query.total}
           pageSize={query.pageSize}
-          onPageChange={query.setPage}
+          loading={query.loading}
+          hasPrev={query.hasPrev}
+          hasNext={query.hasNext}
+          onFirst={query.goFirst}
+          onPrev={query.goPrev}
+          onNext={query.goNext}
+          onLast={query.goLast}
           onPageSizeChange={query.setPageSize}
         />
       </SectionCard>

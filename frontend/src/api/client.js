@@ -55,10 +55,12 @@ export function toParams(filters = {}) {
   return params
 }
 
-export function downloadFile(url) {
-  return axios
-    .get(url, { baseURL, responseType: 'blob' })
-    .then((response) => response.data)
+export async function downloadFile(url) {
+  const response = await axios.get(url, { baseURL, responseType: 'blob' })
+  // The backend streams the exact filtered rows and echoes how many data
+  // rows were written, so the UI can reconcile export count with the total.
+  const count = Number(response.headers['x-result-count'])
+  return { blob: response.data, count: Number.isFinite(count) ? count : null }
 }
 
 export default http

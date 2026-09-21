@@ -21,7 +21,15 @@ def create_app(config_name=None):
     os.makedirs(app.instance_path, exist_ok=True)
 
     db.init_app(app)
-    cors.init_app(app, resources={r"/api/*": {"origins": app.config["CORS_ORIGINS"]}})
+    cors.init_app(
+        app,
+        resources={
+            r"/api/*": {
+                "origins": app.config["CORS_ORIGINS"],
+                "expose_headers": ["X-Result-Count", "Content-Disposition"],
+            }
+        },
+    )
 
     register_error_handlers(app)
     register_blueprints(app)

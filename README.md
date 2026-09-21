@@ -16,6 +16,9 @@
 
 设计要点:
 
+- **稳定翻页(键集游标)**: 监测数据列表/查询页不使用 OFFSET, 而以“排序维度值 + 主键 id”构成不透明游标定位每页边界; 排序统一追加唯一 id 兜底, 保证全序。翻页期间他人新增/删除记录, 已看过的页不会整页位移、不重复也不漏记录; 前端缓存已访问页, 点“上一页”零请求还原。切换排序/筛选/每页条数回到第一页并给出新总数。
+- **汇总与导出对齐**: 列表总数、页头汇总共用同一次过滤计数; CSV 全量流式导出(无行数截断)并通过响应头 `X-Result-Count` 回传实际导出行数, 前端与页头总数核对, 不一致时提示数据刚被更新。
+- **加载不跳动**: 翻页加载时保留旧行并叠加轻量遮罩, 首屏使用与真实行等高的骨架占位, 汇总卡片预留脚注高度, 表头与首列不错位。
 - **超标自动判定**: 数据写入时即按“因子 + 数据周期”取用限值, 计算超标倍数并分级, 同步生成待标注超标记录; 修正数据后超标记录自动更新或撤销。
 - **业务规则集中在后端**: 限值与分级规则位于 `backend/app/domain/`, 前端仅做展示与前置校验, 避免规则分叉。
 - **模块化组织**: 后端按 `api / services / models / domain / utils` 分层; 前端每个业务模块独占目录, 公共能力沉淀在 `components/`、`hooks/`、`api/`。
@@ -28,7 +31,7 @@
 | 数据库 | SQLite(默认, 零依赖) / PostgreSQL 16(可选, compose 覆盖文件) |
 | 前端 | React 18 · React Router 6 · Vite 7 · Axios · 原生 CSS(设计令牌 + 组件类) |
 | 部署 | Docker 多阶段构建 · Nginx 静态托管与 `/api` 反向代理 · docker compose |
-| 测试 | Pytest(43 个后端用例: 接口 + 领域规则) |
+| 测试 | Pytest(54 个后端用例: 接口 + 领域规则 + 稳定翻页) |
 
 ## 目录结构
 
@@ -155,7 +158,7 @@ docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --buil
 | GET/PUT/DELETE | `/api/stations/{id}` | 台账详情(含分因子统计) / 更新 / 删除(级联) |
 | GET | `/api/stations/options` | 下拉选项(监测点、区域) |
 | GET | `/api/stations/summary` | 台账规模统计 |
-| GET | `/api/measurements` | 监测数据分页查询(含筛选汇总) |
+| GET | `/api/measurements` | 监测数据分页查询(键集游标, 含筛选汇总; 参数 `cursor`/`dir=first|next|prev|last`/`sort`/`order`) |
 | POST | `/api/measurements/entries` | **成组录入**: 一个监测点 + 一个时刻 + 多个因子 |
 | POST | `/api/measurements/preview` | 超标校验预览(不写库) |
 | DELETE | `/api/measurements/{id}` | 删除监测数据 |
@@ -228,7 +231,7 @@ docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --buil
 
 ```bash
 cd backend
-python -m pytest -q          # 43 个用例: 台账 CRUD/级联、录入与超标判定、标注规则、查询统计与导出、元数据接口
+python -m pytest -q          # 54 个用例: 台账 CRUD/级联、录入与超标判定、标注规则、查询统计与导出、稳定游标翻页、元数据接口
 
 cd frontend
 npm run build                # 生产构建校验

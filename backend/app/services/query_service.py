@@ -2,6 +2,7 @@
 from datetime import datetime, time
 
 from sqlalchemy import cast, func, or_
+from sqlalchemy.orm import joinedload
 
 from ..domain.constants import (
     DATA_SOURCE_LABELS,
@@ -14,11 +15,37 @@ from ..errors import ValidationError
 from ..extensions import db
 from ..models import Exceedance, Measurement, Station
 from ..models.base import iso
+from ..utils import keyset
 from ..utils.validation import parse_date
 
 GROUP_BY_CHOICES = ("station", "area", "pollutant", "period", "day", "month", "data_source")
 METRIC_CHOICES = ("avg", "max", "min", "count", "sum")
 SORT_CHOICES = ("measured_at", "value", "exceed_ratio", "pollutant", "station_code", "created_at")
+DEFAULT_SORT = "measured_at"
+
+# Deterministic sort dimensions. Nullable columns are COALESCEd so NULLs
+# keep a fixed position; Measurement.id is always appended as the final
+# tie-breaker to give a gap-free total order for cursor pagination.
+SORT_SPECS = {
+    "measured_at": keyset.SortSpec(
+        Measurement.measured_at, lambda row: row.measured_at, kind=keyset.KIND_DATETIME
+    ),
+    "value": keyset.SortSpec(Measurement.value, lambda row: row.value),
+    "exceed_ratio": keyset.SortSpec(
+        db.func.coalesce(Measurement.exceed_ratio, keyset.NEG_INF_FLOAT),
+        lambda row: row.exceed_ratio,
+        null_value=keyset.NEG_INF_FLOAT,
+    ),
+    "pollutant": keyset.SortSpec(
+        Measurement.pollutant, lambda row: row.pollutant, kind=keyset.KIND_TEXT
+    ),
+    "station_code": keyset.SortSpec(
+        Station.code, lambda row: row.station.code if row.station else None, kind=keyset.KIND_TEXT
+    ),
+    "created_at": keyset.SortSpec(
+        Measurement.created_at, lambda row: row.created_at, kind=keyset.KIND_DATETIME
+    ),
+}
 
 
 def _split(value):
@@ -143,28 +170,81 @@ def apply_filters(query, filters):
     return query
 
 
+def normalize_sort(sort=None, order=None):
+    sort = sort if sort in SORT_SPECS else DEFAULT_SORT
+    descending = (order or "desc").lower() != "asc"
+    return sort, descending
+
+
 def apply_sort(query, sort=None, order="desc"):
-    sort = sort if sort in SORT_CHOICES else "measured_at"
-    column = {
-        "measured_at": Measurement.measured_at,
-        "value": Measurement.value,
-        "exceed_ratio": Measurement.exceed_ratio,
-        "pollutant": Measurement.pollutant,
-        "station_code": Station.code,
-        "created_at": Measurement.created_at,
-    }[sort]
-    primary = column.desc() if (order or "desc").lower() == "desc" else column.asc()
-    return query.order_by(primary, Measurement.id.desc())
+    sort, descending = normalize_sort(sort, order)
+    dim = SORT_SPECS[sort]
+    return query.order_by(
+        dim.expr.desc() if descending else dim.expr.asc(),
+        Measurement.id.desc() if descending else Measurement.id.asc(),
+    )
 
 
-def measurement_query(args):
+def measurement_query(args, sorted_query=False, with_station=False):
     filters = parse_filters(args)
     query = apply_filters(db.session.query(Measurement), filters)
-    return apply_sort(query, args.get("sort"), args.get("order")), filters
+    if with_station:
+        # Lists and exports serialise station fields for every row; eager
+        # loading keeps it to one JOIN instead of N lazy queries.
+        query = query.options(joinedload(Measurement.station))
+    sort, descending = normalize_sort(args.get("sort"), args.get("order"))
+    if sorted_query:
+        query = apply_sort(query, sort, "desc" if descending else "asc")
+    return query, filters, sort, descending
 
 
-def summary(filters):
-    """Aggregate counters shown above the query result table."""
+def measurement_page(args, cursor=None, direction="first", page_size=20):
+    """One stable keyset page for a measurement list.
+
+    The same filtered query feeds the page, the ``total`` counter and the
+    summary, so the header total and every downstream figure (including
+    CSV export) describe one consistent filter set.
+    """
+    base_query, filters, sort, descending = measurement_query(args, with_station=True)
+    spec = SORT_SPECS[sort]
+
+    decoded = keyset.decode_cursor(cursor) if cursor else None
+    if cursor and decoded is None:
+        raise ValidationError("分页游标无效, 请重置到第一页", fields={"cursor": "invalid"})
+
+    total = base_query.order_by(None).count()
+    page = keyset.keyset_page(
+        base_query,
+        spec,
+        Measurement.id,
+        page_size,
+        cursor=decoded,
+        direction=direction,
+        descending=descending,
+        total=total,
+    )
+
+    return {
+        "rows": page["rows"],
+        "filters": filters,
+        "total": total,
+        "sort": sort,
+        "order": "desc" if descending else "asc",
+        "next_cursor": page["next_cursor"],
+        "prev_cursor": page["prev_cursor"],
+        "has_next": page["has_next"],
+        "has_prev": page["has_prev"],
+        "direction": direction,
+    }
+
+
+def summary(filters, total=None):
+    """Aggregate counters shown above the query result table.
+
+    When ``total`` is supplied (the count already taken for the list page)
+    it is reused, keeping the page header total and the summary derived
+    from the exact same filter evaluation.
+    """
     query = apply_filters(
         db.session.query(
             func.count(Measurement.id),
@@ -176,8 +256,8 @@ def summary(filters):
         ),
         filters,
     )
-    total, exceeded, stations, first_at, last_at, avg_value = query.one()
-    total = int(total or 0)
+    count, exceeded, stations, first_at, last_at, avg_value = query.one()
+    total = int(total if total is not None else count or 0)
     exceeded = int(exceeded or 0)
     return {
         "total": total,

@@ -43,9 +43,9 @@ def exceedance_options():
 def export_exceedances():
     from ..utils.csv_export import csv_response
 
-    rows = exceedance_service.exceedance_query(request.args).limit(
-        current_app.config["MAX_EXPORT_ROWS"]
-    ).all()
+    query = exceedance_service.exceedance_query(request.args)
+    total = query.order_by(None).count()
+    rows = query.yield_per(current_app.config["EXPORT_BATCH_SIZE"])
     columns = [
         ("站点编码", lambda row: row.station.code if row.station else ""),
         ("站点名称", lambda row: row.station.name if row.station else ""),
@@ -61,7 +61,7 @@ def export_exceedances():
         ("标注时间", lambda row: row.annotated_at.strftime("%Y-%m-%d %H:%M")
             if row.annotated_at else ""),
     ]
-    return csv_response(rows, columns, "exceedance_records")
+    return csv_response(rows, columns, "exceedance_records", count=total)
 
 
 @bp.get("/<int:exceedance_id>")

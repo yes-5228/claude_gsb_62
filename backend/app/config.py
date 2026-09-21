@@ -36,7 +36,7 @@ class BaseConfig:
     DEFAULT_PAGE_SIZE = 20
     MAX_PAGE_SIZE = 200
     MAX_BATCH_SIZE = 500
-    MAX_EXPORT_ROWS = 20000
+    EXPORT_BATCH_SIZE = 500
 
     AUTO_INIT_DB = _as_bool(os.getenv("AUTO_INIT_DB"), True)
     AUTO_SEED = _as_bool(os.getenv("AUTO_SEED"), True)

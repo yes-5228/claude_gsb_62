@@ -1,8 +1,12 @@
 import { EmptyState, Loading } from './Feedback.jsx'
 
 /**
- * Generic table: columns = [{ key, title, width, align, className, render(row) }]
+ * Generic table: columns = [{ key, title, width, align, className,
+ * sortable, sortKey, render(row) }]
  * Supports optional row selection, used by the exceedance work bench.
+ * Pass `sort` + `order` + `onSort(sortKey)` to make columns with
+ * `sortable` (or a `sortKey`) clickable; the active column shows an
+ * arrow so the current ordering always stays visible.
  */
 export default function DataTable({
   columns,
@@ -17,16 +21,55 @@ export default function DataTable({
   onToggleAll,
   onRowClick,
   rowClassName,
-  caption
+  caption,
+  sort = null,
+  order = null,
+  onSort = null,
+  skeletonRows = 8
 }) {
-  if (loading && rows.length === 0) return <Loading />
+  // Keep the table mounted (and its column widths stable) while the next
+  // page loads; overlay a faint mask instead of swapping in a spinner.
+  const showOverlay = loading && rows.length > 0
 
   const keys = rows.map((row) => row[rowKey])
-  const allSelected = selectable && keys.length > 0 && keys.every((key) => selectedIds.includes(key))
+  const allSelected =
+    selectable && keys.length > 0 && keys.every((key) => selectedIds.includes(key))
+
+  const renderHeaderCell = (column) => {
+    const active = column.sortKey && sort === column.sortKey
+    const sortable = Boolean(column.sortKey)
+    const arrow = active ? (order === 'asc' ? '▲' : '▼') : ''
+    const content = (
+      <span className={sortable ? 'sort-label' : undefined}>
+        {column.title}
+        {sortable ? <span className={`sort-arrow${active ? ' active' : ''}`}>{arrow || '↕'}</span> : null}
+      </span>
+    )
+    return (
+      <th
+        key={column.key}
+        style={column.width ? { width: column.width } : undefined}
+        className={column.align === 'right' ? 'text-right' : ''}
+      >
+        {sortable ? (
+          <button
+            type="button"
+            className={`sort-button${active ? ' active' : ''}`}
+            onClick={() => onSort?.(column.sortKey)}
+            aria-label={`按${column.title}排序`}
+          >
+            {content}
+          </button>
+        ) : (
+          content
+        )}
+      </th>
+    )
+  }
 
   return (
     <>
-      <div className="table-wrap">
+      <div className={`table-wrap${showOverlay ? ' loading' : ''}`}>
         <table className="data-table">
           <thead>
             <tr>
@@ -40,12 +83,7 @@ export default function DataTable({
                   />
                 </th>
               ) : null}
-              {columns.map((column) => (
-                <th key={column.key} style={column.width ? { width: column.width } : undefined}
-                    className={column.align === 'right' ? 'text-right' : ''}>
-                  {column.title}
-                </th>
-              ))}
+              {columns.map(renderHeaderCell)}
             </tr>
           </thead>
           <tbody>
@@ -83,10 +121,33 @@ export default function DataTable({
                 </tr>
               )
             })}
+            {/* Reserve the same number of rows during the first load so the
+                table height and column widths do not jump when data lands. */}
+            {loading && rows.length === 0
+              ? Array.from({ length: skeletonRows }).map((_, rowIndex) => (
+                  <tr key={`skeleton-${rowIndex}`} className="skeleton-row" aria-hidden="true">
+                    {selectable ? <td /> : null}
+                    {columns.map((column) => (
+                      <td
+                        key={column.key}
+                        className={column.align === 'right' ? 'text-right' : ''}
+                      >
+                        <span className="skeleton-line" />
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              : null}
           </tbody>
         </table>
+        {showOverlay ? (
+          <div className="table-loading-mask">
+            <span className="spinner" />
+            <span>加载中…</span>
+          </div>
+        ) : null}
       </div>
-      {rows.length === 0 ? <EmptyState text={emptyText} icon={emptyIcon} /> : null}
+      {!loading && rows.length === 0 ? <EmptyState text={emptyText} icon={emptyIcon} /> : null}
       {caption ? <div className="table-caption">{caption}</div> : null}
     </>
   )

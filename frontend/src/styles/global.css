@@ -156,7 +156,7 @@ a { color: var(--primary); text-decoration: none; }
 .filter-actions { display: flex; gap: 8px; align-items: end; }
 
 /* ---------- tables ---------- */
-.table-wrap { overflow-x: auto; }
+.table-wrap { overflow-x: auto; position: relative; }
 table.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 table.data-table th {
   text-align: left; padding: 10px 12px; background: var(--panel-soft);
@@ -169,6 +169,36 @@ table.data-table tbody tr.selected { background: var(--primary-soft); }
 table.data-table tbody tr.clickable { cursor: pointer; }
 .cell-nowrap { white-space: nowrap; }
 .table-caption { padding: 12px 18px; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border); }
+
+/* sortable headers */
+.sort-button {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin: 0; padding: 0; border: none; background: transparent;
+  font: inherit; font-weight: 600; color: inherit; cursor: pointer;
+}
+.sort-button:hover { color: var(--primary); }
+.sort-button.active { color: var(--primary); }
+.sort-arrow { font-size: 10px; color: var(--border-strong); line-height: 1; }
+.sort-arrow.active { color: var(--primary); }
+
+/* loading: keep the old rows in place so nothing jumps, dim + overlay */
+.table-wrap.loading .data-table { opacity: 0.45; transition: opacity 0.15s; }
+.table-loading-mask {
+  position: absolute; inset: 0; display: flex; align-items: flex-start;
+  justify-content: center; padding-top: 42px; gap: 8px;
+  color: var(--primary); font-size: 13px; background: rgba(255, 255, 255, 0.35);
+}
+
+/* first-load skeleton reserves the same footprint as real rows */
+.skeleton-line {
+  display: inline-block; width: 100%; min-width: 48px; height: 12px;
+  border-radius: 6px; background: linear-gradient(90deg, #eef2f7 25%, #e2e8f0 37%, #eef2f7 63%);
+  background-size: 400% 100%; animation: shimmer 1.3s ease-in-out infinite;
+}
+@keyframes shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
 
 /* ---------- tags ---------- */
 .tag {
@@ -185,6 +215,7 @@ table.data-table tbody tr.clickable { cursor: pointer; }
 
 /* ---------- stats ---------- */
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+.stat-grid-loading { opacity: 0.7; transition: opacity 0.15s; }
 .stat-card {
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 15px 16px; box-shadow: var(--shadow);
@@ -192,7 +223,7 @@ table.data-table tbody tr.clickable { cursor: pointer; }
 .stat-label { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
 .stat-value { font-size: 24px; font-weight: 600; margin-top: 6px; line-height: 1.15; }
 .stat-value small { font-size: 12px; font-weight: 400; color: var(--text-muted); margin-left: 4px; }
-.stat-foot { font-size: 11.5px; color: var(--text-muted); margin-top: 6px; }
+.stat-foot { font-size: 11.5px; color: var(--text-muted); margin-top: 6px; min-height: 16px; }
 
 /* ---------- pagination ---------- */
 .pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; flex-wrap: wrap; }

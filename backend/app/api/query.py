@@ -4,18 +4,32 @@ from flask import Blueprint, current_app, request
 from ..domain.constants import DATA_SOURCE_LABELS, PERIOD_LABELS, STATION_TYPE_LABELS
 from ..domain.standards import POLLUTANTS
 from ..services import query_service
-from ..utils.pagination import paginate_query
+from ..utils.pagination import keyset_params
 
 bp = Blueprint("query", __name__)
 
 
 @bp.get("/measurements")
 def query_measurements():
-    query, filters = query_service.measurement_query(request.args)
-    result = paginate_query(query, lambda row: row.to_dict(include_station=True))
-    result["summary"] = query_service.summary(filters)
-    result["applied_filters"] = filters
-    return result
+    cursor, direction, page_size = keyset_params()
+    page = query_service.measurement_page(
+        request.args, cursor=cursor, direction=direction, page_size=page_size
+    )
+    items = [row.to_dict(include_station=True) for row in page["rows"]]
+    return {
+        "items": items,
+        "total": page["total"],
+        "page_size": page_size,
+        "sort": page["sort"],
+        "order": page["order"],
+        "cursor_pagination": True,
+        "next_cursor": page["next_cursor"],
+        "prev_cursor": page["prev_cursor"],
+        "has_next": page["has_next"],
+        "has_prev": page["has_prev"],
+        "summary": query_service.summary(page["filters"], total=page["total"]),
+        "applied_filters": page["filters"],
+    }
 
 
 @bp.get("/statistics")
@@ -27,8 +41,12 @@ def query_statistics():
 def query_export():
     from ..utils.csv_export import csv_response
 
-    query, _ = query_service.measurement_query(request.args)
-    rows = query.limit(current_app.config["MAX_EXPORT_ROWS"]).all()
+    query, _filters, sort, descending = query_service.measurement_query(
+        request.args, sorted_query=True, with_station=True
+    )
+    total = query.order_by(None).count()
+    # Full export: no row cap, streamed in the same order as the list.
+    rows = query.yield_per(current_app.config["EXPORT_BATCH_SIZE"])
     columns = [
         ("站点编码", lambda row: row.station.code if row.station else ""),
         ("站点名称", lambda row: row.station.name if row.station else ""),
@@ -44,7 +62,7 @@ def query_export():
         ("数据来源", lambda row: DATA_SOURCE_LABELS.get(row.data_source, row.data_source)),
         ("录入人", "recorder"),
     ]
-    return csv_response(rows, columns, "monitoring_query")
+    return csv_response(rows, columns, "monitoring_query", count=total)
 
 
 @bp.get("/options")

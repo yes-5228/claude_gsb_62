@@ -1,18 +1,30 @@
 import DataTable from '../../../components/common/DataTable.jsx'
 import Tag from '../../../components/common/Tag.jsx'
 import { DATA_SOURCE_TONE, EXCEEDANCE_STATUS_TONE } from '../../../constants/index.js'
-import { formatDateTime, formatNumber } from '../../../utils/format.js'
+import { formatDateTime, formatNumber, formatRatio } from '../../../utils/format.js'
 
-export default function QueryResultTable({ rows, loading }) {
+export default function QueryResultTable({ rows, loading, sort, order, onSort }) {
   const columns = [
-    { key: 'measured_at', title: '监测时间', className: 'cell-nowrap', render: (row) => formatDateTime(row.measured_at) },
-    { key: 'station', title: '监测点', render: (row) => `${row.station?.code || ''} ${row.station?.name || ''}` },
+    {
+      key: 'measured_at',
+      title: '监测时间',
+      sortKey: 'measured_at',
+      className: 'cell-nowrap',
+      render: (row) => formatDateTime(row.measured_at)
+    },
+    {
+      key: 'station',
+      title: '监测点',
+      sortKey: 'station_code',
+      render: (row) => `${row.station?.code || ''} ${row.station?.name || ''}`
+    },
     { key: 'station_area', title: '区域', render: (row) => row.station?.area || '-' },
-    { key: 'pollutant_label', title: '因子', className: 'cell-nowrap' },
+    { key: 'pollutant_label', title: '因子', sortKey: 'pollutant', className: 'cell-nowrap' },
     { key: 'period_label', title: '周期', className: 'cell-nowrap' },
     {
       key: 'value',
       title: '监测值',
+      sortKey: 'value',
       align: 'right',
       render: (row) => (
         <span className={row.is_exceeded ? 'danger-text strong' : ''}>
@@ -21,6 +33,14 @@ export default function QueryResultTable({ rows, loading }) {
       )
     },
     { key: 'limit_value', title: '限值', align: 'right', render: (row) => (row.limit_value === null ? '无限值' : formatNumber(row.limit_value)) },
+    {
+      key: 'exceed_ratio',
+      title: '超标倍数',
+      sortKey: 'exceed_ratio',
+      align: 'right',
+      className: 'cell-nowrap',
+      render: (row) => (row.is_exceeded ? <span className="danger-text strong">{formatRatio(row.exceed_ratio)}</span> : <span className="muted">-</span>)
+    },
     {
       key: 'is_exceeded',
       title: '超标',
@@ -51,6 +71,9 @@ export default function QueryResultTable({ rows, loading }) {
       columns={columns}
       rows={rows}
       loading={loading}
+      sort={sort}
+      order={order}
+      onSort={onSort}
       emptyText="没有符合条件的数据, 请调整筛选条件"
       emptyIcon="🔍"
     />
