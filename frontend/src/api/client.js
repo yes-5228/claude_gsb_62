@@ -61,4 +61,19 @@ export function downloadFile(url) {
     .then((response) => response.data)
 }
 
+/**
+ * 下载导出文件: 当携带的结果集快照令牌已过期 (410) 时, 丢弃令牌按最新
+ * 数据重试一次。`buildUrl(includeSnapshot)` 返回请求地址。
+ */
+export async function downloadExport(buildUrl, snapshotToken) {
+  try {
+    return await downloadFile(buildUrl(snapshotToken))
+  } catch (error) {
+    if (error.response?.status === 410 && snapshotToken) {
+      return downloadFile(buildUrl(null))
+    }
+    throw error
+  }
+}
+
 export default http

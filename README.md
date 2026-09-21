@@ -12,9 +12,16 @@
 | 监测点台账 | `/stations` | 台账增删改查、区域/类型/状态筛选、点位详情与分因子统计、级联清理关联数据 |
 | 监测数据录入 | `/measurements` | 按“监测点 + 时刻 + 周期”成组录入多因子浓度、超标校验预览、重复数据覆盖、录入结果回执 |
 | 超标记录标注 | `/exceedances` | 超标自动建单、单条/批量标注(确认 / 忽略 / 重置)、等级人工修正、标注留痕与统计 |
-| 数据查询 | `/query` | 多条件组合检索、聚合统计(按因子/站点/区域/日/月等)、分页浏览、CSV 导出 |
+| 数据查询 | `/query` | 多条件组合检索、聚合统计(按因子/站点/区域/日/月等)、**快照分页**、CSV 导出 |
 
 设计要点:
+
+- **快照式稳定分页**: 监测记录增长很快, 传统 `LIMIT/OFFSET` 在翻页过程中遇到他人新增/删除会整页位移(重复或漏看)。首次按「筛选+排序」查询时, 后端把结果集 ID 顺序物化成一份**查询快照**(`query_snapshots` 表), 之后翻页只按快照固定位置取数:
+  - 快照建立后他人新增的记录不会插入已看过的页之间, 已看过的页前后翻不位移、不重复、不遗漏;
+  - 他人删除的记录在快照中保留位置并渲染为「记录已删除」占位行, 总条数与页数不变;
+  - 页头汇总在建立快照时一次算好并固化, 翻页期间不跳动;
+  - 导出遍历同一份快照并返回 `X-Export-Total`, **导出行数恒等于页头总条数**;
+  - 切换筛选或排序维度后当前页回到第一页、按最新数据重建快照并给出新的总数; 快照默认 30 分钟过期(`QUERY_SNAPSHOT_TTL`), 过期由前端静默重建。
 
 - **超标自动判定**: 数据写入时即按“因子 + 数据周期”取用限值, 计算超标倍数并分级, 同步生成待标注超标记录; 修正数据后超标记录自动更新或撤销。
 - **业务规则集中在后端**: 限值与分级规则位于 `backend/app/domain/`, 前端仅做展示与前置校验, 避免规则分叉。
@@ -165,9 +172,9 @@ docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --buil
 | PATCH | `/api/exceedances/{id}` | 单条标注 |
 | POST | `/api/exceedances/annotations` | 批量标注 |
 | GET | `/api/exceedances/summary` | 超标统计(状态/等级/高发因子/站点排名) |
-| GET | `/api/query/measurements` | 高级条件检索 |
+| GET | `/api/query/measurements` | 高级条件检索 (快照分页: 首页建快照, 后续页带 `snapshot_token`) |
 | GET | `/api/query/statistics` | 聚合统计(`group_by` + `metric`) |
-| GET | `/api/query/export` | 查询结果导出 CSV |
+| GET | `/api/query/export` | 查询结果导出 CSV (沿用快照, 行数=页头总数) |
 
 `POST /api/measurements/entries` 请求示例:
 
@@ -220,6 +227,8 @@ docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --buil
 | `TIMEZONE` | `Asia/Shanghai` | 展示时区 |
 | `AUTO_INIT_DB` / `AUTO_SEED` | `true`(开发) | 启动时自动建表 / 写入演示数据 |
 | `SEED_DEMO` | `true` | Docker 容器启动时是否写入演示数据 |
+| `QUERY_SNAPSHOT_TTL` | `1800` | 查询快照有效期(秒), 过期后翻页会重建 |
+| `QUERY_SNAPSHOT_MAX_ROWS` | `100000` | 单次查询可物化的最大结果集行数, 超限需收紧筛选 |
 | `GUNICORN_WORKERS` | `2` | 生产容器 worker 数量 |
 | `VITE_API_BASE` | `/api` | 前端接口前缀 |
 | `VITE_PROXY_TARGET` | `http://127.0.0.1:5000` | 开发代理的后端地址 |

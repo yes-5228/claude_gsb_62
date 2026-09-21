@@ -1,21 +1,40 @@
-"""数据查询 API: 条件检索 / 聚合统计 / 导出."""
-from flask import Blueprint, current_app, request
+"""数据查询 API: 条件检索 / 聚合统计 / 导出.
+
+列表与导出均基于查询快照 (见 services/snapshot_service.py): 翻页过程中他人
+继续录入或删除记录时, 已看过的页不位移, 页头汇总与最终导出条数保持一致。
+"""
+from flask import Blueprint, request
 
 from ..domain.constants import DATA_SOURCE_LABELS, PERIOD_LABELS, STATION_TYPE_LABELS
 from ..domain.standards import POLLUTANTS
-from ..services import query_service
-from ..utils.pagination import paginate_query
+from ..services import query_service, snapshot_service
+from ..utils.csv_export import csv_stream_response
 
 bp = Blueprint("query", __name__)
 
 
+def _export_columns():
+    return [
+        ("站点编码", lambda row: (row.get("station") or {}).get("code", "")),
+        ("站点名称", lambda row: (row.get("station") or {}).get("name", "")),
+        ("所属区域", lambda row: (row.get("station") or {}).get("area", "")),
+        ("监测因子", "pollutant_label"),
+        ("数据周期", lambda row: PERIOD_LABELS.get(row.get("period"), row.get("period") or "")),
+        ("监测值", lambda row: row.get("value") if row.get("value") is not None else ""),
+        ("单位", "unit"),
+        ("限值", lambda row: row.get("limit_value") if row.get("limit_value") is not None else ""),
+        ("是否超标", lambda row: "是" if row.get("is_exceeded") else "否"),
+        ("超标倍数", lambda row: row.get("exceed_ratio") if row.get("exceed_ratio") is not None else ""),
+        ("监测时间", lambda row: row.get("measured_at", "").replace("T", " ")[:16] if row.get("measured_at") else ""),
+        ("数据来源", lambda row: DATA_SOURCE_LABELS.get(row.get("data_source"), row.get("data_source") or "")),
+        ("录入人", lambda row: row.get("recorder") or ""),
+    ]
+
+
 @bp.get("/measurements")
 def query_measurements():
-    query, filters = query_service.measurement_query(request.args)
-    result = paginate_query(query, lambda row: row.to_dict(include_station=True))
-    result["summary"] = query_service.summary(filters)
-    result["applied_filters"] = filters
-    return result
+    payload, _ = snapshot_service.paginate(request.args)
+    return payload
 
 
 @bp.get("/statistics")
@@ -25,26 +44,9 @@ def query_statistics():
 
 @bp.get("/export")
 def query_export():
-    from ..utils.csv_export import csv_response
-
-    query, _ = query_service.measurement_query(request.args)
-    rows = query.limit(current_app.config["MAX_EXPORT_ROWS"]).all()
-    columns = [
-        ("站点编码", lambda row: row.station.code if row.station else ""),
-        ("站点名称", lambda row: row.station.name if row.station else ""),
-        ("所属区域", lambda row: row.station.area if row.station else ""),
-        ("监测因子", lambda row: row.pollutant_label()),
-        ("数据周期", lambda row: PERIOD_LABELS.get(row.period, row.period)),
-        ("监测值", "value"),
-        ("单位", "unit"),
-        ("限值", "limit_value"),
-        ("是否超标", lambda row: "是" if row.is_exceeded else "否"),
-        ("超标倍数", "exceed_ratio"),
-        ("监测时间", lambda row: row.measured_at.strftime("%Y-%m-%d %H:%M")),
-        ("数据来源", lambda row: DATA_SOURCE_LABELS.get(row.data_source, row.data_source)),
-        ("录入人", "recorder"),
-    ]
-    return csv_response(rows, columns, "monitoring_query")
+    snapshot, _ = snapshot_service.resolve_for_export(request.args)
+    payloads = snapshot_service.iter_snapshot_payloads(snapshot)
+    return csv_stream_response(payloads, _export_columns(), "monitoring_query", total=snapshot.total)
 
 
 @bp.get("/options")

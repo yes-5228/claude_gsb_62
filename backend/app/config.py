@@ -38,6 +38,11 @@ class BaseConfig:
     MAX_BATCH_SIZE = 500
     MAX_EXPORT_ROWS = 20000
 
+    # 列表快照: 翻页期间他人增删记录不会导致整页位移或重复/遗漏,
+    # 汇总与导出都基于同一份快照, 保证条数对得上。
+    QUERY_SNAPSHOT_TTL = int(os.getenv("QUERY_SNAPSHOT_TTL", 1800))  # 秒
+    QUERY_SNAPSHOT_MAX_ROWS = int(os.getenv("QUERY_SNAPSHOT_MAX_ROWS", 100000))
+
     AUTO_INIT_DB = _as_bool(os.getenv("AUTO_INIT_DB"), True)
     AUTO_SEED = _as_bool(os.getenv("AUTO_SEED"), True)
 

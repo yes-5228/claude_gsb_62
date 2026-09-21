@@ -156,7 +156,7 @@ a { color: var(--primary); text-decoration: none; }
 .filter-actions { display: flex; gap: 8px; align-items: end; }
 
 /* ---------- tables ---------- */
-.table-wrap { overflow-x: auto; }
+.table-wrap { overflow-x: auto; position: relative; }
 table.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 table.data-table th {
   text-align: left; padding: 10px 12px; background: var(--panel-soft);
@@ -169,6 +169,25 @@ table.data-table tbody tr.selected { background: var(--primary-soft); }
 table.data-table tbody tr.clickable { cursor: pointer; }
 .cell-nowrap { white-space: nowrap; }
 .table-caption { padding: 12px 18px; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border); }
+
+/* 翻页加载时旧行保持可见, 仅覆盖半透明遮罩, 表头/首列不跳动 */
+.table-wrap--loading.is-loading table.data-table { opacity: 0.55; }
+.table-loading-mask {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, 0.35); z-index: 5;
+}
+.table-loading-mask .loading-block {
+  background: #fff; padding: 10px 18px; border-radius: 999px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.12); position: absolute; top: 40%;
+}
+/* 快照中被他人删除的记录占位行: 保留位置不位移, 视觉上弱化 */
+table.data-table tbody tr.row-deleted td { color: var(--text-muted); background: repeating-linear-gradient(
+  45deg, #fafbfd, #fafbfd 8px, #f3f6fa 8px, #f3f6fa 16px); }
+table.data-table tbody tr.row-deleted:hover { background: transparent; }
+
+/* ---------- sort bar ---------- */
+.sort-bar { display: inline-flex; align-items: center; gap: 6px; margin-right: 8px; }
+.sort-bar .select { width: auto; padding: 5px 8px; font-size: 12.5px; }
 
 /* ---------- tags ---------- */
 .tag {
@@ -195,8 +214,9 @@ table.data-table tbody tr.clickable { cursor: pointer; }
 .stat-foot { font-size: 11.5px; color: var(--text-muted); margin-top: 6px; }
 
 /* ---------- pagination ---------- */
-.pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; flex-wrap: wrap; }
-.pager-info { font-size: 12.5px; color: var(--text-muted); }
+.pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; flex-wrap: wrap; min-height: 58px; box-sizing: border-box; }
+.pager-info { font-size: 12.5px; color: var(--text-muted); min-width: 210px; }
+.pager-info .strong { color: var(--text); font-weight: 600; }
 .pager-controls { display: flex; align-items: center; gap: 8px; }
 .pager-controls .select { width: auto; padding: 5px 8px; font-size: 12.5px; }
 

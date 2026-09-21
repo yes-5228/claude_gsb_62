@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { downloadFile } from '../../api/client.js'
+import { downloadExport } from '../../api/client.js'
 import {
   deleteMeasurement,
   exportMeasurementsUrl,
@@ -37,7 +37,8 @@ export default function MeasurementsPage() {
   const handleSubmitted = useCallback(
     (payload) => {
       setResult({ kind: 'submit', payload })
-      query.reload()
+      // 新录入的数据可能改变排序结果, 回第一页重建快照
+      query.refresh()
     },
     [query]
   )
@@ -49,7 +50,7 @@ export default function MeasurementsPage() {
       await deleteMeasurement(pendingDelete.id)
       toast.success('监测数据已删除')
       setPendingDelete(null)
-      query.reload()
+      query.refresh()
     } catch (error) {
       toast.error(error.message)
     } finally {
@@ -60,15 +61,20 @@ export default function MeasurementsPage() {
   const handleExport = useCallback(async () => {
     setExporting(true)
     try {
-      const blob = await downloadFile(exportMeasurementsUrl(query.filters))
+      const params = { ...query.filters, sort: query.sort, order: query.order }
+      const blob = await downloadExport(
+        (useToken) =>
+          exportMeasurementsUrl({ ...params, ...(useToken ? { snapshot_token: useToken } : {}) }),
+        query.data?.snapshot_token
+      )
       saveBlob(blob, `监测数据_${Date.now()}.csv`)
-      toast.success('导出任务已完成, 请查看下载文件')
+      toast.success(`导出完成, 共 ${query.total} 条`)
     } catch (error) {
       toast.error(error.message)
     } finally {
       setExporting(false)
     }
-  }, [query.filters, toast])
+  }, [query.filters, query.sort, query.order, query.total, query.data, toast])
 
   return (
     <>
@@ -94,7 +100,7 @@ export default function MeasurementsPage() {
         hint="按监测时间倒序展示, 便于核对刚提交的记录"
         actions={
           <>
-            <button type="button" className="btn btn-sm" onClick={query.reload} disabled={query.loading}>
+            <button type="button" className="btn btn-sm" onClick={query.refresh} disabled={query.loading}>
               刷新
             </button>
             <button type="button" className="btn btn-sm btn-primary" onClick={handleExport} disabled={exporting}>
